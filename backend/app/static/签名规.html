@@ -24,11 +24,27 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>签名规</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>签名规 · 密钥热更策略</h1>
+      <p>HMAC-SHA256 · 库内最新密钥版本为唯一权威 · 物化快照封票 · 拒回刷旧钥 · 签名规页与尝试表同票</p>
     </header>
 
 <section class="卷">
+  <h2>端点密钥版本徽章（库内权威）</h2>
+  <p class="说明">热更只许单调升档；旧版降为只读旧钥。投递开投瞬间封版本快照，读版本与写尝试同成同败。</p>
+  <div class="键格" id="徽章格">加载中…</div>
+  <p class="消息" id="密钥消息"></p>
+</section>
+
+<section class="卷">
+  <h2>热更 / 换版</h2>
+  <label>端点键</label><input id="热更端点" placeholder="ep-billing"/>
+  <label>新版本（留空自动 +1；填旧版会被拒回刷）</label><input id="新版本" placeholder="留空 = 下一版"/>
+  <p class="消息" id="热更消息"></p>
+  <button class="按钮" type="button" id="热更钮">密钥热更升档</button>
+</section>
+
+<section class="卷">
+  <h2>签名规键值</h2>
   <label>键</label><input id="键" placeholder="最大重试"/>
   <label>值</label><input id="值"/>
   <p class="消息" id="消息"></p>
@@ -36,22 +52,100 @@
 </section>
 <section class="卷"><pre id="规" class="说明"></pre></section>
 
+<section class="卷">
+  <h2>签名规 ↔ 尝试表 同票核对</h2>
+  <p class="说明" id="对账摘要">尚未核对。</p>
+  <button class="按钮 次" type="button" id="对账钮">跑密钥版本对账</button>
+  <div class="表绕" style="margin-top:12px"><table>
+    <thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>密钥版本徽章</th><th>同票</th><th>验签</th><th>成败</th><th>拒因中文</th></tr></thead>
+    <tbody id="同票表"></tbody>
+  </table></div>
+</section>
+
   </main>
 
 <script>
-async function 刷() {
+async function 刷规() {
   document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
 }
+
+async function 刷徽章() {
+  const data = await 投递台.getJSON('/api/密钥目录');
+  const 格 = document.getElementById('徽章格');
+  格.innerHTML = '';
+  for (const b of (data.徽章 || [])) {
+    const 卡 = document.createElement('div'); 卡.className = '键卡';
+    const 头 = document.createElement('div');
+    头.style.marginBottom = '6px';
+    头.appendChild(投递台.版本徽章(b.密钥版本, b.密钥版本));
+    const 键 = document.createElement('div'); 键.className = '小行';
+    键.innerHTML = '<b>' + 投递台.安全文本(b.端点键) + '</b> · ' + 投递台.安全文本(b.名称 || '');
+    const 纹 = document.createElement('div'); 纹.className = '小行';
+    纹.innerHTML = '指纹 <code>' + 投递台.安全文本(b.密钥指纹) + '</code>';
+    const 钮 = document.createElement('button'); 钮.className = '按钮 次'; 钮.type = 'button';
+    钮.style.marginTop = '8px'; 钮.textContent = '热更 ' + b.端点键 + ' 到下一版';
+    钮.onclick = async () => {
+      try {
+        const r = await 投递台.postJSON('/api/密钥/热更', {端点键: b.端点键});
+        document.getElementById('密钥消息').textContent = '已热更：' + r.原版本 + ' → ' + r.密钥版本;
+        await 刷徽章(); await 刷同票();
+      } catch (e) { document.getElementById('密钥消息').textContent = e.message; }
+    };
+    卡.appendChild(头); 卡.appendChild(键); 卡.appendChild(纹); 卡.appendChild(钮);
+    格.appendChild(卡);
+  }
+}
+
+async function 刷同票() {
+  const rows = await 投递台.getJSON('/api/投递');
+  const tb = document.getElementById('同票表'); tb.innerHTML = '';
+  for (const r of rows.slice(0, 30)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + 投递台.安全文本(r.尝试号) + '</td>' +
+      '<td><a class="行链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td>' +
+      '<td>' + 投递台.安全文本(r.端点键) + '</td>' +
+      '<td class="v"></td><td class="t"></td><td>' + 投递台.安全文本(r.验签状态 || '—') + '</td><td class="s"></td>' +
+      '<td class="拒因">' + 投递台.安全文本(r.拒因 || r.说明 || '') + '</td>';
+    tr.querySelector('td.v').appendChild(投递台.版本徽章(r.密钥版本, r.现行版本));
+    tr.querySelector('td.t').appendChild(投递台.同票徽章(r.同票));
+    tr.querySelector('td.s').appendChild(投递台.成败徽章(r.状态));
+    tb.appendChild(tr);
+  }
+}
+
 document.getElementById('保存').onclick = async () => {
   try {
     const k = document.getElementById('键').value;
     const v = document.getElementById('值').value;
     await 投递台.postJSON('/api/签名规', {[k]: v});
     document.getElementById('消息').textContent = '已保存';
-    await 刷();
+    await 刷规();
   } catch (e) { document.getElementById('消息').textContent = e.message; }
 };
-刷();
+document.getElementById('热更钮').onclick = async () => {
+  const msg = document.getElementById('热更消息');
+  try {
+    const r = await 投递台.postJSON('/api/密钥/热更', {
+      端点键: document.getElementById('热更端点').value,
+      密钥版本: document.getElementById('新版本').value || null,
+    });
+    msg.textContent = '已热更 ' + r.端点键 + '：' + r.原版本 + ' → ' + r.密钥版本;
+    await 刷徽章();
+  } catch (e) { msg.textContent = e.message; }
+};
+document.getElementById('对账钮').onclick = async () => {
+  try {
+    const r = await 投递台.getJSON('/api/对账密钥');
+    document.getElementById('对账摘要').textContent =
+      '对齐=' + (r.对齐 ? '是' : '否') + '；现行端点 ' + r.新版已齐端点数 + '/' + r.端点数 +
+      '；新版票 ' + r.新版成功票 + '；旧签票 ' + r.旧签成功票 + '；同票异常 ' + r.同票异常数 +
+      (r.旧签冒新事件.length ? '；旧签冒新事件 ' + r.旧签冒新事件.join(',') : '');
+    await 刷同票();
+  } catch (e) { document.getElementById('对账摘要').textContent = e.message; }
+};
+
+刷规(); 刷徽章(); 刷同票();
 </script>
 
 </body>

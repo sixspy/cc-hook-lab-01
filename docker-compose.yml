@@ -3,7 +3,7 @@ services:
   hook:
     build: ./backend
     container_name: cc-hook-lab-hook-01
-    ports: ["8500:8500"]
+    ports: ["8501:8500"]
     volumes:
       - hook_data:/data
       - ./fixtures:/fixtures:ro

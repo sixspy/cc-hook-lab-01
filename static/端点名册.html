@@ -45,12 +45,19 @@ async function 刷表() {
   const rows = await 投递台.getJSON('/api/端点');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td>'+投递台.安全文本(r.密钥版本)+'</td><td></td><td></td>');
+    const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td class="ver"></td><td></td><td></td>');
+    tr.querySelector('td.ver').appendChild(投递台.版本徽章(r.密钥版本, r.密钥版本));
     tr.children[4].appendChild(投递台.徽章(r.启用 ? '启用' : '停用'));
     const btn = document.createElement('button'); btn.className='按钮 次'; btn.type='button';
     btn.textContent = r.启用 ? '停用' : '启用';
     btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用}); await 刷表(); };
-    tr.children[5].appendChild(btn); tb.appendChild(tr);
+    const hot = document.createElement('button'); hot.className='按钮'; hot.type='button';
+    hot.style.marginLeft = '6px'; hot.textContent = '密钥热更';
+    hot.onclick = async () => {
+      try { await 投递台.postJSON('/api/密钥/热更', {端点键:r.端点键}); await 刷表(); }
+      catch (e) { alert(e.message); }
+    };
+    tr.children[5].appendChild(btn); tr.children[5].appendChild(hot); tb.appendChild(tr);
   }
 }
 document.getElementById('登记').onclick = async () => {

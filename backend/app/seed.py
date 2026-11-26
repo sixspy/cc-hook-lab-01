@@ -68,7 +68,137 @@ CREATE TABLE IF NOT EXISTS 操作留痕 (
   事件号 TEXT NOT NULL DEFAULT '',
   详情 TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS 端点密钥 (
+  端点键 TEXT NOT NULL,
+  密钥版本 TEXT NOT NULL,
+  版本序号 INTEGER NOT NULL DEFAULT 1,
+  密钥材料 TEXT NOT NULL DEFAULT '',
+  状态 TEXT NOT NULL DEFAULT '现行',
+  生效时 TEXT NOT NULL,
+  PRIMARY KEY (端点键, 密钥版本)
+);
+CREATE TABLE IF NOT EXISTS 投递物化包 (
+  尝试号 TEXT PRIMARY KEY,
+  事件号 TEXT NOT NULL,
+  端点键 TEXT NOT NULL,
+  密钥版本 TEXT NOT NULL DEFAULT '',
+  版本序号 INTEGER NOT NULL DEFAULT 0,
+  物化包 TEXT NOT NULL DEFAULT '',
+  包摘要 TEXT NOT NULL DEFAULT '',
+  签名摘要 TEXT NOT NULL DEFAULT '',
+  验签状态 TEXT NOT NULL DEFAULT '',
+  对端码 INTEGER NOT NULL DEFAULT 0,
+  拒因 TEXT NOT NULL DEFAULT '',
+  封包时 TEXT NOT NULL DEFAULT ''
+);
 """
+
+# 旧库平滑升档：CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，这里幂等加列。
+补列 = {
+    "投递尝试": [
+        "密钥版本 TEXT NOT NULL DEFAULT ''",
+        "版本序号 INTEGER NOT NULL DEFAULT 0",
+        "物化包摘要 TEXT NOT NULL DEFAULT ''",
+        "验签状态 TEXT NOT NULL DEFAULT ''",
+        "拒因 TEXT NOT NULL DEFAULT ''",
+    ],
+    "互证批次": [
+        "密钥对账 TEXT NOT NULL DEFAULT ''",
+    ],
+}
+
+
+def _加列若缺(conn) -> None:
+    for 表, 定义们 in 补列.items():
+        已有 = {r[1] for r in conn.execute(f"PRAGMA table_info({表})").fetchall()}
+        for 定义 in 定义们:
+            列名 = 定义.split()[0]
+            if 列名 not in 已有:
+                conn.execute(f"ALTER TABLE {表} ADD COLUMN {定义}")
+
+
+def 版本序号(版本: str) -> int:
+    digits = "".join(ch for ch in str(版本 or "") if ch.isdigit())
+    return int(digits) if digits else 0
+
+
+def _播种端点密钥(conn) -> None:
+    """保证每个端点在密钥目录里都有一条与其当前指针一致的『现行』密钥。"""
+    t = 此刻()
+    eps = conn.execute("SELECT 端点键, 密钥版本 FROM 投递端点").fetchall()
+    for ep in eps:
+        键, 版 = ep["端点键"], ep["密钥版本"] or "v1"
+        seq = 版本序号(版) or 1
+        exists = conn.execute(
+            "SELECT 1 FROM 端点密钥 WHERE 端点键=? AND 密钥版本=?", (键, 版)
+        ).fetchone()
+        if not exists:
+            conn.execute(
+                "INSERT INTO 端点密钥(端点键,密钥版本,版本序号,密钥材料,状态,生效时) "
+                "VALUES (?,?,?,?, '现行', ?)",
+                (键, 版, seq, f"hook-secret-{版}", t),
+            )
+        # 指针所指版本必须是唯一现行；其余降为旧钥
+        conn.execute(
+            "UPDATE 端点密钥 SET 状态='旧钥' WHERE 端点键=? AND 密钥版本<>?", (键, 版)
+        )
+        conn.execute(
+            "UPDATE 端点密钥 SET 状态='现行', 版本序号=? WHERE 端点键=? AND 密钥版本=?",
+            (seq, 键, 版),
+        )
+
+
+def _回填尝试物化包(conn) -> None:
+    """把无版本/无影子包的历史尝试补齐为同票，避免迁移后被误判成账实撕裂。
+
+    显式签于旧版本的污染票（测试/事故灌入）版本号非空，不会被改写成现行版本。
+    """
+    from app.services import 签名目录
+
+    rows = conn.execute(
+        "SELECT a.*, e.载荷摘要 AS 载荷摘要 FROM 投递尝试 a "
+        "LEFT JOIN 事件 e ON a.事件号=e.事件号"
+    ).fetchall()
+    for a in rows:
+        键 = a["端点键"]
+        现行 = conn.execute(
+            "SELECT 密钥版本 FROM 投递端点 WHERE 端点键=?", (键,)
+        ).fetchone()
+        现行版 = 现行["密钥版本"] if 现行 else "v1"
+        版 = a["密钥版本"] or 现行版
+        seq = a["版本序号"] or 版本序号(版)
+        验签 = a["验签状态"]
+        if not 验签:
+            验签 = "通过" if a["状态"] == "成功" else "未验"
+        _包, 文本, 摘要 = 签名目录.封物化包(
+            尝试号=a["尝试号"],
+            事件号=a["事件号"],
+            端点键=键,
+            密钥版本=版,
+            版本序号=seq,
+            签名摘要=a["签名摘要"] or "",
+            载荷摘要=(a["载荷摘要"] if "载荷摘要" in a.keys() else "") or "",
+        )
+        if not a["密钥版本"] or not a["物化包摘要"]:
+            conn.execute(
+                "UPDATE 投递尝试 SET 密钥版本=?, 版本序号=?, 物化包摘要=?, 验签状态=? "
+                "WHERE 尝试号=?",
+                (版, seq, 摘要, 验签, a["尝试号"]),
+            )
+        shadow = conn.execute(
+            "SELECT 1 FROM 投递物化包 WHERE 尝试号=?", (a["尝试号"],)
+        ).fetchone()
+        if not shadow:
+            conn.execute(
+                "INSERT INTO 投递物化包(尝试号,事件号,端点键,密钥版本,版本序号,物化包,"
+                "包摘要,签名摘要,验签状态,对端码,拒因,封包时) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    a["尝试号"], a["事件号"], 键, 版, seq, 文本, 摘要,
+                    a["签名摘要"] or "", 验签, int(a["响应码"] or 0),
+                    a["拒因"] if "拒因" in a.keys() else "", a["投递时"],
+                ),
+            )
+
 
 
 def 此刻() -> str:
@@ -78,6 +208,7 @@ def 此刻() -> str:
 def 初始化库() -> None:
     conn = 连接()
     conn.executescript(建表)
+    _加列若缺(conn)
     if conn.execute("SELECT COUNT(*) AS c FROM 用户").fetchone()["c"] == 0:
         conn.execute("INSERT INTO 用户(账号,密码哈希,角色) VALUES (?,?,?)", ("admin", "123456", "管理员"))
     if conn.execute("SELECT COUNT(*) AS c FROM 签名规").fetchone()["c"] == 0:
@@ -126,5 +257,7 @@ def 初始化库() -> None:
             "INSERT INTO 操作留痕(时刻,操作,事件号,详情) VALUES (?,?,?,?)",
             (t, "种子", "", "初始化投递台样例"),
         )
+    _播种端点密钥(conn)
+    _回填尝试物化包(conn)
     conn.commit()
     conn.close()

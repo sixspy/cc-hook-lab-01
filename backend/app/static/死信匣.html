@@ -24,8 +24,8 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>死信匣</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>死信匣目录</h1>
+      <p>重试耗尽入匣；密钥旧版拒签的中文原因与封票版本一并留档，重投按库内最新钥签名。</p>
     </header>
 
 <section class="卷">
@@ -34,17 +34,30 @@
   <button class="按钮" type="button" id="重投钮">死信重投</button>
   <button class="按钮 次" type="button" id="作废钮">作废</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table><thead><tr>
+  <th>死信号</th><th>事件号</th><th>端点键</th><th>封票密钥版本</th><th>失败次数</th><th>末次原因</th><th>尝试拒因中文</th><th>状态</th>
+</tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
 <script>
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/死信');
-  const tb = document.getElementById('表'); tb.innerHTML='';
+  const tb = document.getElementById('表'); tb.innerHTML = '';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
-    tr.children[5].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + 投递台.安全文本(r.死信号) + '</td>' +
+      '<td><a class="行链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td>' +
+      '<td>' + 投递台.安全文本(r.端点键) + '</td>' +
+      '<td class="ver"></td>' +
+      '<td>' + 投递台.安全文本(r.失败次数) + '</td>' +
+      '<td>' + 投递台.安全文本(r.末次原因) + '</td>' +
+      '<td class="拒因">' + 投递台.安全文本(r.尝试拒因 || '') + '</td>' +
+      '<td class="st"></td>';
+    tr.querySelector('td.ver').appendChild(投递台.版本徽章(r.密钥版本, r.现行版本));
+    tr.querySelector('td.st').appendChild(投递台.徽章(r.状态));
+    tb.appendChild(tr);
   }
 }
 document.getElementById('重投钮').onclick = async () => {

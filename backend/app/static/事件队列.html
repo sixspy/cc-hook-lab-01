@@ -46,7 +46,7 @@ async function 刷表() {
   const rows = await 投递台.getJSON('/api/事件');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td>');
+    const tr = 投递台.行('<td><a class="行链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td>');
     tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
   }
 }

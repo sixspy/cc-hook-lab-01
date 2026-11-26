@@ -24,31 +24,112 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>投递互证</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递互证 · 密钥版本对账</h1>
+      <p>正式投递尝试与影子物化包联查同票；旧钥成功票只入旧签档，不得冒标「新版已齐」。</p>
     </header>
 
 <section class="卷">
-  <button class="按钮" type="button" id="跑">跑互证</button>
+  <button class="按钮" type="button" id="跑">跑互证（含密钥对账）</button>
+  <button class="按钮 次" type="button" id="只对账">只刷密钥对账</button>
+  <p class="消息" id="密钥说明"></p>
+  <div class="指标" id="密钥指标"></div>
+</section>
+
+<section class="卷">
+  <h2 style="margin-top:0">端点密钥对齐明细</h2>
+  <div class="表绕"><table><thead><tr>
+    <th>端点键</th><th>现行版本</th><th>新版成功票</th><th>旧签成功票</th>
+    <th>同票异常</th><th>已投递事件</th><th>旧签冒新事件</th><th>无票已投递</th><th>新版已齐</th>
+  </tr></thead><tbody id="密钥表"></tbody></table></div>
+</section>
+
+<section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>账实对齐</th><th>密钥对齐</th><th>全对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h2 style="margin-top:0">最近一次互证原始 JSON</h2>
   <pre id="出" class="说明"></pre>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
 <script>
+function 布尔徽章(ok, 好字, 坏字) {
+  return 投递台.徽章(ok ? (好字 || '是') : (坏字 || '否'));
+}
+
+async function 刷密钥对账() {
+  const a = await 投递台.getJSON('/api/对账密钥');
+  document.getElementById('密钥说明').textContent =
+    (a.对齐 ? '密钥版本对账对齐：' : '密钥版本对账未齐：') +
+    '端点数 ' + a.端点数 + '，新版已齐 ' + a.新版已齐端点数 +
+    '，新版成功票 ' + a.新版成功票 + '，旧签成功票 ' + a.旧签成功票 +
+    '，同票异常 ' + a.同票异常数 +
+    ((a.旧签冒新事件 || []).length ? '，旧签冒新事件：' + a.旧签冒新事件.join('、') : '');
+  const box = document.getElementById('密钥指标'); box.innerHTML = '';
+  for (const [k, v] of [
+    ['对齐', a.对齐 ? '是' : '否'],
+    ['端点数', a.端点数],
+    ['新版已齐端点', a.新版已齐端点数],
+    ['新版成功票', a.新版成功票],
+    ['旧签成功票', a.旧签成功票],
+    ['同票异常数', a.同票异常数],
+  ]) {
+    const d = document.createElement('div'); d.className = '卡';
+    d.innerHTML = '<small>' + 投递台.安全文本(k) + '</small><b>' + 投递台.安全文本(v) + '</b>';
+    box.appendChild(d);
+  }
+  const tb = document.getElementById('密钥表'); tb.innerHTML = '';
+  for (const e of (a.端点 || [])) {
+    const tr = document.createElement('tr');
+    const 冒 = (e.旧签冒新事件 || []).map(function (x) {
+      return '<a class="行链" href="/事件详情.html?事件号=' + encodeURIComponent(x) + '">' + 投递台.安全文本(x) + '</a>';
+    }).join('、') || '—';
+    const 无票 = (e.无票已投递事件 || []).length;
+    tr.innerHTML =
+      '<td><a class="行链" href="/端点名册.html"><b>' + 投递台.安全文本(e.端点键) + '</b></a></td>' +
+      '<td class="ver"></td>' +
+      '<td>' + 投递台.安全文本(e.新版成功票) + '</td>' +
+      '<td class="' + (e.旧签成功票 ? '拒因' : '') + '">' + 投递台.安全文本(e.旧签成功票) + '</td>' +
+      '<td class="' + (e.同票异常 ? '拒因' : '') + '">' + 投递台.安全文本(e.同票异常) + '</td>' +
+      '<td>' + 投递台.安全文本(e.已投递事件数) + '</td>' +
+      '<td>' + 冒 + '</td>' +
+      '<td>' + 投递台.安全文本(无票) + '</td>' +
+      '<td class="齐"></td>';
+    tr.querySelector('td.ver').appendChild(投递台.版本徽章(e.现行版本, e.现行版本));
+    tr.querySelector('td.齐').appendChild(布尔徽章(e.新版已齐, '新版已齐', '未齐'));
+    tb.appendChild(tr);
+  }
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/互证');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    tb.appendChild(投递台.行('<td>'+r.批次号+'</td><td>'+投递台.安全文本(r.时刻)+'</td><td>'+r.事件总数+'</td><td>'+r.已投递数+'</td><td>'+r.死信数+'</td><td>'+r.待投数+'</td><td>'+(r.是否对齐?'是':'否')+'</td><td>'+投递台.安全文本(r.说明)+'</td>'));
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + 投递台.安全文本(r.批次号) + '</td>' +
+      '<td>' + 投递台.安全文本(r.时刻) + '</td>' +
+      '<td>' + 投递台.安全文本(r.事件总数) + '</td>' +
+      '<td>' + 投递台.安全文本(r.已投递数) + '</td>' +
+      '<td>' + 投递台.安全文本(r.死信数) + '</td>' +
+      '<td>' + 投递台.安全文本(r.待投数) + '</td>' +
+      '<td class="账"></td><td class="钥"></td><td class="全"></td>' +
+      '<td>' + 投递台.安全文本(r.说明) + '</td>';
+    tr.querySelector('td.账').appendChild(布尔徽章(r.是否对齐));
+    tr.querySelector('td.钥').appendChild(布尔徽章(r.密钥对齐, '密钥齐', '密钥未齐'));
+    tr.querySelector('td.全').appendChild(布尔徽章(r.是否全部对齐, '全对齐', '未全齐'));
+    tb.appendChild(tr);
   }
 }
 document.getElementById('跑').onclick = async () => {
-  document.getElementById('出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
+  const r = await 投递台.postJSON('/api/互证/跑', {});
+  document.getElementById('出').textContent = JSON.stringify(r, null, 2);
   await 刷表();
+  await 刷密钥对账();
 };
+document.getElementById('只对账').onclick = 刷密钥对账;
 刷表();
+刷密钥对账();
 </script>
 
 </body>

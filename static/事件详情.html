@@ -24,25 +24,118 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>事件详情</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>事件队列详情</h1>
+      <p>端点键 · 密钥版本徽章 · 尝试成败 · 中文拒因，正式尝试与影子物化包同票。</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号"/>
+  <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
   <button class="按钮" type="button" id="查">查询</button>
+  <button class="按钮" type="button" id="投新">用库内最新钥投递</button>
+  <button class="按钮 次" type="button" id="投旧">填 v1 旧钥强投（复现拒签）</button>
+  <p class="消息" id="动作消息"></p>
+</section>
+
+<section class="卷" id="概览卷" hidden>
+  <div id="概览"></div>
+</section>
+
+<section class="卷" id="尝试卷" hidden>
+  <h2>投递尝试（同票卡片）</h2>
+  <div id="尝试卡"></div>
+</section>
+
+<section class="卷" id="死信卷" hidden>
+  <h2>死信</h2>
+  <div id="死信"></div>
+</section>
+
+<section class="卷">
+  <h2>原始账实 JSON</h2>
   <pre id="出" class="说明"></pre>
 </section>
 
   </main>
 
 <script>
-document.getElementById('查').onclick = async () => {
+function 键值行(k, vNode) {
+  const d = document.createElement('div'); d.className = '小行';
+  const b = document.createElement('b'); b.textContent = k + '：';
+  d.appendChild(b); if (typeof vNode === 'string') d.appendChild(document.createTextNode(vNode));
+  else if (vNode) d.appendChild(vNode);
+  return d;
+}
+
+async function 查() {
+  const id = document.getElementById('事件号').value.trim();
+  if (!id) return;
+  let d;
+  try { d = await 投递台.getJSON('/api/事件/' + encodeURIComponent(id)); }
+  catch (e) { document.getElementById('出').textContent = e.message; return; }
+
+  document.getElementById('出').textContent = JSON.stringify(d, null, 2);
+  document.getElementById('概览卷').hidden = false;
+  const ov = document.getElementById('概览'); ov.innerHTML = '';
+  const h = document.createElement('h2'); h.style.marginTop = '0';
+  h.textContent = d.事件号 + ' · ' + d.事件类型; ov.appendChild(h);
+  const st = 投递台.徽章(d.状态);
+  ov.appendChild(键值行('事件命运', st));
+  ov.appendChild(键值行('端点键', d.端点键));
+  ov.appendChild(键值行('载荷摘要', d.载荷摘要 || '—'));
+  ov.appendChild(键值行('优先级', d.优先级));
+  ov.appendChild(键值行('入队时 / 更新时', (d.入队时 || '') + ' / ' + (d.更新时 || '')));
+
+  const wrap = document.getElementById('尝试卡'); wrap.innerHTML = '';
+  document.getElementById('尝试卷').hidden = false;
+  for (const a of (d.尝试 || [])) {
+    const card = document.createElement('div');
+    card.className = '键卡 流水卡片 ' + (a.状态 === '成功' ? '胜' : '败');
+    const line1 = document.createElement('div'); line1.style.margin = '4px 0';
+    line1.appendChild(投递台.成败徽章(a.状态));
+    line1.appendChild(document.createTextNode('  '));
+    line1.appendChild(投递台.版本徽章(a.密钥版本, a.现行版本));
+    line1.appendChild(document.createTextNode('  '));
+    line1.appendChild(投递台.同票徽章(a.同票));
+    card.appendChild(line1);
+    card.appendChild(键值行('尝试号', a.尝试号));
+    card.appendChild(键值行('端点键', a.端点键));
+    card.appendChild(键值行('响应码 / 验签', a.响应码 + ' · ' + (a.验签状态 || '—')));
+    card.appendChild(键值行('签名摘要', a.签名摘要));
+    card.appendChild(键值行('物化包摘要', a.物化包摘要 || '—'));
+    card.appendChild(键值行('投递时', a.投递时));
+    if (a.拒因) { const p = document.createElement('p'); p.className = '拒因'; p.textContent = '拒因：' + a.拒因; card.appendChild(p); }
+    else if (a.说明) { card.appendChild(键值行('说明', a.说明)); }
+    wrap.appendChild(card);
+  }
+
+  const dl = d.死信;
+  document.getElementById('死信卷').hidden = !dl;
+  if (dl) {
+    const box = document.getElementById('死信'); box.innerHTML = '';
+    box.appendChild(键值行('死信号', dl.死信号));
+    box.appendChild(键值行('端点键', dl.端点键));
+    box.appendChild(键值行('失败次数', String(dl.失败次数)));
+    box.appendChild(键值行('末次原因（中文）', dl.末次原因));
+    box.appendChild(键值行('状态', dl.状态));
+  }
+}
+
+async function 投递(版本) {
+  const id = document.getElementById('事件号').value.trim();
+  const msg = document.getElementById('动作消息');
   try {
-    const id = document.getElementById('事件号').value;
-    document.getElementById('出').textContent = JSON.stringify(await 投递台.getJSON('/api/事件/'+encodeURIComponent(id)), null, 2);
-  } catch (e) { document.getElementById('出').textContent = e.message; }
-};
+    const r = await 投递台.postJSON('/api/投递', {事件号: id, 密钥版本: 版本 || null});
+    msg.textContent = r.状态 + ' · ' + (r.密钥版本 || '') + (r.拒因 ? ' · ' + r.拒因 : '');
+    msg.style.color = r.状态 === '成功' ? 'var(--好)' : 'var(--险)';
+    await 查();
+  } catch (e) { msg.textContent = e.message; msg.style.color = 'var(--险)'; }
+}
+
+document.getElementById('查').onclick = 查;
+document.getElementById('投新').onclick = () => 投递(null);
+document.getElementById('投旧').onclick = () => 投递('v1');
+const qid = 投递台.查询参数().get('事件号');
+if (qid) { document.getElementById('事件号').value = qid; 查(); }
 </script>
 
 </body>

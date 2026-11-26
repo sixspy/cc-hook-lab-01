@@ -119,6 +119,24 @@
   .指标 .卡 b { display: block; font-size: 1.4rem; color: var(--靛); }
   .说明 { font-size: 13px; line-height: 1.55; opacity: 0.9; }
   .消息 { color: var(--险); font-size: 13px; min-height: 1.2em; }
+  /* hook-01 密钥版本徽章 / 成败 / 拒因 */
+  .徽章.成功 { background: #d1fae5; color: var(--好); }
+  .徽章.失败 { background: #fee2e2; color: var(--险); }
+  .徽章.密钥版本 { background: #e0e7ff; color: #3730a3; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .徽章.密钥版本.旧钥 { background: #ede9e0; color: #7c6a55; text-decoration: line-through; }
+  .徽章.密钥版本.现行 { background: #dbeafe; color: #1e40af; text-decoration: none; }
+  .徽章.同票 { background: #d1fae5; color: var(--好); }
+  .徽章.异票 { background: #fee2e2; color: var(--险); }
+  .拒因 { color: var(--险); font-size: 12.5px; line-height: 1.5; max-width: 340px; }
+  .键格 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .键卡 { border: 1px solid var(--边); border-radius: 8px; padding: 12px; background: #fff; }
+  .键卡 code { font-size: 12px; opacity: .8; }
+  .行链 { color: var(--靛浅); text-decoration: none; }
+  .行链:hover { text-decoration: underline; }
+  .流水卡片 { border-left: 4px solid var(--靛浅); }
+  .流水卡片.败 { border-left-color: var(--险); }
+  .流水卡片.胜 { border-left-color: var(--好); }
+  .小行 { font-size: 12.5px; opacity: .85; margin: 2px 0; }
   @media (max-width: 720px) {
     .登录壳 { grid-template-columns: 1fr; }
     .登录左 { padding: 28px; }

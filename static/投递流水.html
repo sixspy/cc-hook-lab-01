@@ -24,44 +24,65 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>投递流水</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递流水卡片</h1>
+      <p>每张尝试票封住开投瞬间的密钥版本快照；旧钥拒签必落失败与中文拒因，不得记假成功。</p>
     </header>
 
 <section class="卷">
   <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
-  <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
+  <label><input type="checkbox" id="强制失败" style="width:auto;max-width:none"/> 强制失败（测重试/死信）</label>
+  <label>指定签名密钥版本（留空读库内最新；热更后填 v1 复现旧钥被拒）</label>
+  <input id="密钥版本" placeholder="留空 = 库内现行版本"/>
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="投递钮">签名投递一次</button>
   <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table><thead><tr>
+  <th>尝试号</th><th>事件号</th><th>端点键</th><th>密钥版本徽章</th><th>签名摘要</th>
+  <th>成败</th><th>响应码</th><th>同票</th><th>拒因中文</th>
+</tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
 <script>
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/投递');
-  const tb = document.getElementById('表'); tb.innerHTML='';
+  const tb = document.getElementById('表'); tb.innerHTML = '';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.尝试号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.签名摘要)+'</td><td></td><td>'+投递台.安全文本(r.响应码)+'</td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td>' + 投递台.安全文本(r.尝试号) + '</td>' +
+      '<td><a class="行链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td>' +
+      '<td>' + 投递台.安全文本(r.端点键) + '</td>' +
+      '<td class="ver"></td>' +
+      '<td><code>' + 投递台.安全文本(r.签名摘要) + '</code></td>' +
+      '<td class="st"></td><td>' + 投递台.安全文本(r.响应码) + '</td>' +
+      '<td class="tk"></td>' +
+      '<td class="拒因">' + 投递台.安全文本(r.拒因 || r.说明 || '') + '</td>'
+    );
+    tr.querySelector('td.ver').appendChild(投递台.版本徽章(r.密钥版本, r.现行版本));
+    tr.querySelector('td.st').appendChild(投递台.成败徽章(r.状态));
+    tr.querySelector('td.tk').appendChild(投递台.同票徽章(r.同票));
+    tb.appendChild(tr);
   }
 }
 document.getElementById('投递钮').onclick = async () => {
   const 消息 = document.getElementById('消息');
   try {
+    const ver = document.getElementById('密钥版本').value.trim();
     const rep = await 投递台.postJSON('/api/投递', {
       事件号: document.getElementById('事件号').value,
       强制失败: document.getElementById('强制失败').checked,
+      密钥版本: ver || null,
     });
-    消息.textContent = JSON.stringify(rep);
+    消息.textContent = rep.状态 + ' · ' + (rep.密钥版本 || '') +
+      (rep.拒因 ? ' · 拒因：' + rep.拒因 : ' · 同票成功');
+    消息.style.color = rep.状态 === '成功' ? 'var(--好)' : 'var(--险)';
     await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
+  } catch (e) { 消息.textContent = e.message; 消息.style.color = 'var(--险)'; }
 };
 document.getElementById('批量钮').onclick = async () => {
   const rep = await 投递台.postJSON('/api/投递/批量重试', {});
-  document.getElementById('消息').textContent = '批量 '+rep.条数;
+  document.getElementById('消息').textContent = '批量处理 ' + rep.条数 + ' 条';
   await 刷表();
 };
 刷表();

@@ -2,6 +2,7 @@ from __future__ import annotations
 from app.db import 连接
 from app.services import 校验
 from app.services.时间 import 此刻
+from app.seed import 版本序号
 
 
 def 登记(body: dict) -> dict:
@@ -17,6 +18,12 @@ def 登记(body: dict) -> dict:
         conn.execute(
             "INSERT INTO 投递端点(端点键,名称,回调URL,密钥版本,启用,说明) VALUES (?,?,?,?,1,?)",
             (端点键, 名称, url, 版本, 说明),
+        )
+        seq = 版本序号(版本) or 1
+        conn.execute(
+            "INSERT INTO 端点密钥(端点键,密钥版本,版本序号,密钥材料,状态,生效时) "
+            "VALUES (?,?,?,?, '现行', ?)",
+            (端点键, 版本, seq, f"hook-secret-{版本}", 此刻()),
         )
         conn.execute("INSERT INTO 操作留痕(时刻,操作,事件号,详情) VALUES (?,?,?,?)",
                      (此刻(), "登记端点", "", 端点键))
